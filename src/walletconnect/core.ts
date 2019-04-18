@@ -117,7 +117,6 @@ class Connector {
 
     if (opts.uri) {
       this.uri = opts.uri;
-      this._subscribeToSessionRequest();
     }
 
     let session = opts.session || null;
@@ -142,6 +141,9 @@ class Connector {
         this._handleIncomingMessages(socketMessage)
     });
 
+    if (opts.uri) {
+      this._subscribeToSessionRequest();
+    }
     this._subscribeToInternalEvents();
     this._socket.open([
       {
