@@ -462,7 +462,7 @@ class Connector {
     this._removeStorageSession();
   }
 
-  public updateSession(sessionStatus: ISessionStatus) {
+  public async updateSession(sessionStatus: ISessionStatus) {
     if (!this._connected) {
       throw new Error("Session currently disconnected");
     }
@@ -481,7 +481,7 @@ class Connector {
       params: [sessionParams]
     });
 
-    this._sendSessionRequest(request, "Session update rejected");
+    await this._sendSessionRequest(request, "Session update rejected");
 
     this._eventManager.trigger({
       event: "session_update",
@@ -496,7 +496,7 @@ class Connector {
     this._manageStorageSession();
   }
 
-  public killSession(sessionError?: ISessionError) {
+  public async killSession(sessionError?: ISessionError) {
     const message = sessionError
       ? sessionError.message
       : "Session Disconnected";
@@ -512,7 +512,7 @@ class Connector {
       params: [sessionParams]
     });
 
-    this._sendSessionRequest(request, "Failed to kill Session");
+    await this._sendSessionRequest(request, "Failed to kill Session");
 
     this._handleSessionDisconnect(message);
   }
@@ -739,8 +739,6 @@ class Connector {
         params: [{ message }]
       });
     }
-    this._removeStorageSession();
-    this._socket.close();
   }
 
   private _handleSessionResponse(
@@ -904,7 +902,7 @@ class Connector {
       this._handleSessionResponse("Session disconnected", payload.params[0]);
     });
 
-    this.on("connected", (error, payload) => {
+    this.on("connect", (error, payload) => {
       if (error) {
         this._eventManager.trigger({
           event: "error",
@@ -917,6 +915,22 @@ class Connector {
         });
       }
       this._socket.pushIncoming();
+    });
+
+    this.on("disconnect", (error, payload) => {
+      if (error) {
+        this._eventManager.trigger({
+          event: "error",
+          params: [
+            {
+              code: "SESSION_DISCONNECTION_ERROR",
+              message: error.toString()
+            }
+          ]
+        });
+      }
+      this._removeStorageSession();
+      this._socket.close();
     });
   }
 
