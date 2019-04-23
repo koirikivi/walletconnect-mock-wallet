@@ -497,7 +497,7 @@ class Connector {
     this._manageStorageSession();
   }
 
-  public killSession(sessionError?: ISessionError) {
+  public async killSession(sessionError?: ISessionError) {
     const message = sessionError
       ? sessionError.message
       : "Session Disconnected";
@@ -513,7 +513,7 @@ class Connector {
       params: [sessionParams]
     });
 
-    this._sendSessionRequest(request, "Failed to kill Session");
+    await this._sendRequest(request);
 
     this._handleSessionDisconnect(message);
   }
@@ -751,11 +751,11 @@ class Connector {
     const message = errorMsg || "Session Disconnected";
     if (this._connected) {
       this._connected = false;
-      this._eventManager.trigger({
-        event: "disconnect",
-        params: [{ message }]
-      });
     }
+    this._eventManager.trigger({
+      event: "disconnect",
+      params: [{ message }]
+    });
     this._removeStorageSession();
     this._socket.close();
   }
