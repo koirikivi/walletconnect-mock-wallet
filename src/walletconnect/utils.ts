@@ -10,7 +10,7 @@ import {
   IJsonRpcResponseSuccess,
   IJsonRpcResponseError,
   IJsonRpcErrorMessage
-} from "@walletconnect/types";
+} from "./types";
 
 export function convertArrayBufferToBuffer(arrayBuffer: ArrayBuffer): Buffer {
   const hex = convertArrayBufferToHex(arrayBuffer);
