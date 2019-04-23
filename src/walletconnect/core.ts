@@ -7,8 +7,6 @@ import {
   ISessionError,
   IJsonRpcResponseSuccess,
   IJsonRpcResponseError,
-  IPartialRpcResponse,
-  IPartialRpcRequest,
   IJsonRpcRequest,
   ITxData,
   IClientMeta,
@@ -17,6 +15,7 @@ import {
   IWalletConnectOptions
 } from "./types";
 import {
+  parseTransactionData,
   convertArrayBufferToHex,
   convertHexToArrayBuffer,
   getMeta,
@@ -95,6 +94,8 @@ class Connector {
     this._storage = storage || null;
 
     if (
+      typeof window !== "undefined" &&
+      typeof window.location !== "undefined" &&
       window.location.protocol !== "https:" &&
       window.location.hostname !== "localhost"
     ) {
@@ -462,7 +463,7 @@ class Connector {
     this._removeStorageSession();
   }
 
-  public async updateSession(sessionStatus: ISessionStatus) {
+  public updateSession(sessionStatus: ISessionStatus) {
     if (!this._connected) {
       throw new Error("Session currently disconnected");
     }
@@ -481,7 +482,7 @@ class Connector {
       params: [sessionParams]
     });
 
-    await this._sendSessionRequest(request, "Session update rejected");
+    this._sendSessionRequest(request, "Session update rejected");
 
     this._eventManager.trigger({
       event: "session_update",
@@ -496,7 +497,7 @@ class Connector {
     this._manageStorageSession();
   }
 
-  public async killSession(sessionError?: ISessionError) {
+  public killSession(sessionError?: ISessionError) {
     const message = sessionError
       ? sessionError.message
       : "Session Disconnected";
@@ -512,7 +513,7 @@ class Connector {
       params: [sessionParams]
     });
 
-    await this._sendSessionRequest(request, "Failed to kill Session");
+    this._sendSessionRequest(request, "Failed to kill Session");
 
     this._handleSessionDisconnect(message);
   }
@@ -522,9 +523,11 @@ class Connector {
       throw new Error("Session currently disconnected");
     }
 
+    const parsedTx = parseTransactionData(tx);
+
     const request = this._formatRequest({
       method: "eth_sendTransaction",
-      params: [tx]
+      params: [parsedTx]
     });
 
     try {
@@ -535,14 +538,16 @@ class Connector {
     }
   }
 
-  public async signTransaction(params: any[]) {
+  public async signTransaction(tx: ITxData) {
     if (!this._connected) {
       throw new Error("Session currently disconnected");
     }
 
+    const parsedTx = parseTransactionData(tx);
+
     const request = this._formatRequest({
       method: "eth_signTransaction",
-      params
+      params: [parsedTx]
     });
 
     try {
@@ -611,7 +616,7 @@ class Connector {
     }
   }
 
-  public async sendCustomRequest(request: IPartialRpcRequest) {
+  public async sendCustomRequest(request: Partial<IJsonRpcRequest>) {
     if (!this._connected) {
       throw new Error("Session currently disconnected");
     }
@@ -626,7 +631,7 @@ class Connector {
     }
   }
 
-  public approveRequest(response: IPartialRpcResponse) {
+  public approveRequest(response: Partial<IJsonRpcResponseSuccess>) {
     if (isRpcResponseSuccess(response)) {
       const formattedResponse = this._formatResponse(response);
       this._sendResponse(formattedResponse);
@@ -635,7 +640,7 @@ class Connector {
     }
   }
 
-  public rejectRequest(response: IPartialRpcResponse) {
+  public rejectRequest(response: Partial<IJsonRpcResponseError>) {
     if (isRpcResponseError(response)) {
       const formattedResponse = this._formatResponse(response);
       this._sendResponse(formattedResponse);
@@ -646,7 +651,10 @@ class Connector {
 
   // -- private --------------------------------------------------------- //
 
-  private async _sendRequest(request: IPartialRpcRequest, _topic?: string) {
+  private async _sendRequest(
+    request: Partial<IJsonRpcRequest>,
+    _topic?: string
+  ) {
     const callRequest: IJsonRpcRequest = this._formatRequest(request);
 
     const encryptionPayload: IEncryptionPayload | null = await this._encrypt(
@@ -698,18 +706,26 @@ class Connector {
     return this._subscribeToCallResponse(request.id);
   }
 
-  private _formatRequest(request: IPartialRpcRequest): IJsonRpcRequest {
+  private _formatRequest(request: Partial<IJsonRpcRequest>): IJsonRpcRequest {
+    if (typeof request.method === "undefined") {
+      throw new Error('JSON RPC request must have valid "method" value');
+    }
     const formattedRequest: IJsonRpcRequest = {
-      id: payloadId(),
+      id: typeof request.id === "undefined" ? payloadId() : request.id,
       jsonrpc: "2.0",
-      ...request
+      method: request.method,
+      params: typeof request.params === "undefined" ? [] : request.params
     };
     return formattedRequest;
   }
 
   private _formatResponse(
-    response: IPartialRpcResponse
+    response: Partial<IJsonRpcResponseSuccess | IJsonRpcResponseError>
   ): IJsonRpcResponseSuccess | IJsonRpcResponseError {
+    if (typeof response.id === "undefined") {
+      throw new Error('JSON RPC request must have valid "id" value');
+    }
+
     if (isRpcResponseError(response)) {
       const error = formatRpcError(response.error);
 
@@ -719,15 +735,16 @@ class Connector {
         error
       };
       return formattedResponseError;
+    } else if (isRpcResponseSuccess(response)) {
+      const formattedResponseSuccess: IJsonRpcResponseSuccess = {
+        jsonrpc: "2.0",
+        ...response
+      };
+
+      return formattedResponseSuccess;
     }
 
-    const formattedResponseSuccess: IJsonRpcResponseSuccess = {
-      jsonrpc: "2.0",
-      result: null,
-      ...response
-    };
-
-    return formattedResponseSuccess;
+    throw new Error("JSON RPC response format is invalid");
   }
 
   private _handleSessionDisconnect(errorMsg?: string) {
@@ -739,6 +756,8 @@ class Connector {
         params: [{ message }]
       });
     }
+    this._removeStorageSession();
+    this._socket.close();
   }
 
   private _handleSessionResponse(
@@ -842,6 +861,7 @@ class Connector {
     this.on(`response:${id}`, (error, payload) => {
       if (error) {
         this._handleSessionResponse(error.message);
+        return;
       }
       if (payload.result) {
         this._handleSessionResponse(errorMsg, payload.result);
@@ -915,22 +935,6 @@ class Connector {
         });
       }
       this._socket.pushIncoming();
-    });
-
-    this.on("disconnect", (error, payload) => {
-      if (error) {
-        this._eventManager.trigger({
-          event: "error",
-          params: [
-            {
-              code: "SESSION_DISCONNECTION_ERROR",
-              message: error.toString()
-            }
-          ]
-        });
-      }
-      this._removeStorageSession();
-      this._socket.close();
     });
   }
 

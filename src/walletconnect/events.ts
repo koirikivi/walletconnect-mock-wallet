@@ -34,7 +34,6 @@ class EventManager {
   }
 
   public subscribe(eventEmitter: IEventEmitter) {
-    console.log("SUBSCRIBE eventEmitter", eventEmitter); // tslint:disable-line
     this._eventEmitters.push(eventEmitter);
   }
 
@@ -85,7 +84,6 @@ class EventManager {
     }
 
     eventEmitters.forEach((eventEmitter: IEventEmitter) => {
-      console.log("TRIGGER EVENTS payload", payload); // tslint:disable-line
       if (isRpcResponseError(payload)) {
         const error = new Error(payload.error.message);
         eventEmitter.callback(error, null);
