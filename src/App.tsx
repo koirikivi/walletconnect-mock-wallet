@@ -470,9 +470,11 @@ class App extends React.Component<{}> {
           });
         } else {
           let message = "JSON RPC method not supported";
+          
           if (!getWallet()) {
             message = "No Active Account";
           }
+          
           walletConnector.rejectRequest({
             id: displayRequest.id,
             error: { message }
