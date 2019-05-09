@@ -51,7 +51,6 @@ class Connector {
   private version: number;
 
   private _bridge: string;
-  private _prevKey: ArrayBuffer | null;
   private _key: ArrayBuffer | null;
   private _nextKey: ArrayBuffer | null;
   private _keyPair: IKeyPair | null;
@@ -83,7 +82,6 @@ class Connector {
     this.version = 1;
 
     this._bridge = "";
-    this._prevKey = null;
     this._key = null;
     this._nextKey = null;
     this._keyPair = null;
@@ -1036,7 +1034,6 @@ class Connector {
     const result = await this._requestKeyUpdate(publicKey);
 
     if (result) {
-      this._prevKey = this._key;
       this._key = this._nextKey;
       this._nextKey = null;
     }
@@ -1092,7 +1089,6 @@ class Connector {
 
           await this._sendResponse(response);
 
-          this._prevKey = this._key;
           this.key = nextKey;
           this._nextKey = null;
         } else {
@@ -1186,15 +1182,11 @@ class Connector {
   > {
     const key: ArrayBuffer | null = this._key;
     if (this.cryptoLib && key) {
-      let result:
+      const result:
         | IJsonRpcRequest
         | IJsonRpcResponseSuccess
         | IJsonRpcResponseError
         | null = await this.cryptoLib.decrypt(payload, key);
-      const prevKey: ArrayBuffer | null = this._prevKey;
-      if (!result && prevKey) {
-        result = await this.cryptoLib.decrypt(payload, prevKey);
-      }
       return result;
     }
     return null;
