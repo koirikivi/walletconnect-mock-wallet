@@ -15,6 +15,7 @@ import {
   IWalletConnectOptions
 } from "./types";
 import {
+  parsePersonalSign,
   parseTransactionData,
   convertArrayBufferToHex,
   convertHexToArrayBuffer,
@@ -23,7 +24,6 @@ import {
   uuid,
   formatRpcError,
   parseWalletConnectUri,
-  isHexStrict,
   convertUtf8ToHex
 } from "./utils";
 import SocketTransport from "./socket";
@@ -92,15 +92,6 @@ class Connector {
     this._eventManager = new EventManager();
     this._connected = false;
     this._storage = storage || null;
-
-    if (
-      typeof window !== "undefined" &&
-      typeof window.location !== "undefined" &&
-      window.location.protocol !== "https:" &&
-      window.location.hostname !== "localhost"
-    ) {
-      throw new Error("HTTPS is required for non-localhost origins");
-    }
 
     if (clientMeta) {
       this.clientMeta = clientMeta;
@@ -581,9 +572,7 @@ class Connector {
       throw new Error("Session currently disconnected");
     }
 
-    if (!isHexStrict(params[1])) {
-      params[1] = convertUtf8ToHex(params[1]);
-    }
+    params = parsePersonalSign(params);
 
     const request = this._formatRequest({
       method: "personal_sign",
@@ -619,6 +608,26 @@ class Connector {
   public async sendCustomRequest(request: Partial<IJsonRpcRequest>) {
     if (!this._connected) {
       throw new Error("Session currently disconnected");
+    }
+
+    switch (request.method) {
+      case "eth_accounts":
+        return this.accounts;
+      case "eth_chainId":
+        return convertUtf8ToHex(`${this.chainId}`, true);
+      case "eth_sendTransaction":
+      case "eth_signTransaction":
+        if (request.params) {
+          request.params[0] = parseTransactionData(request.params[0]);
+        }
+        break;
+      case "personal_sign":
+        if (request.params) {
+          request.params = parsePersonalSign(request.params);
+        }
+        break;
+      default:
+        break;
     }
 
     const formattedRequest = this._formatRequest(request);

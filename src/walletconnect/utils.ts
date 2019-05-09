@@ -34,12 +34,16 @@ export function convertBufferToUtf8(buffer: Buffer): string {
   return result;
 }
 
-export function convertBufferToHex(buffer: Buffer): string {
-  const result = buffer.toString("hex");
+export function convertBufferToHex(buffer: Buffer, prefix?: boolean): string {
+  let result = buffer.toString("hex");
+  if (prefix) {
+    result = "0x" + result;
+  }
   return result;
 }
 
 export function convertHexToBuffer(hex: string): Buffer {
+  hex = hex.replace("0x", "");
   const result = new Buffer(hex, "hex");
   return result;
 }
@@ -107,7 +111,10 @@ export function convertUtf8ToArrayBuffer(utf8: string): ArrayBuffer {
   return arrayBuffer;
 }
 
-export function convertArrayBufferToHex(arrayBuffer: ArrayBuffer): string {
+export function convertArrayBufferToHex(
+  arrayBuffer: ArrayBuffer,
+  prefix?: boolean
+): string {
   const array: Uint8Array = new Uint8Array(arrayBuffer);
   const HEX_CHARS: string = "0123456789abcdef";
   const bytes: string[] = [];
@@ -115,11 +122,16 @@ export function convertArrayBufferToHex(arrayBuffer: ArrayBuffer): string {
     const byte = array[i];
     bytes.push(HEX_CHARS[(byte & 0xf0) >> 4] + HEX_CHARS[byte & 0x0f]);
   }
-  const hex: string = bytes.join("");
+  let hex: string = bytes.join("");
+  if (prefix) {
+    hex = "0x" + hex;
+  }
   return hex;
 }
 
 export function convertHexToArrayBuffer(hex: string): ArrayBuffer {
+  hex = hex.replace("0x", "");
+
   const bytes: number[] = [];
 
   for (let i = 0; i < hex.length; i += 2) {
@@ -131,9 +143,12 @@ export function convertHexToArrayBuffer(hex: string): ArrayBuffer {
   return arrayBuffer;
 }
 
-export function convertUtf8ToHex(utf8: string): string {
+export function convertUtf8ToHex(utf8: string, prefix?: boolean): string {
   const arrayBuffer = convertUtf8ToArrayBuffer(utf8);
-  const hex = convertArrayBufferToHex(arrayBuffer);
+  let hex = convertArrayBufferToHex(arrayBuffer);
+  if (prefix) {
+    hex = "0x" + hex;
+  }
   return hex;
 }
 
@@ -441,6 +456,13 @@ export function promisify(
     });
   };
   return promisifiedFunction;
+}
+
+export function parsePersonalSign(params: string[]): string[] {
+  if (!isHexStrict(params[1])) {
+    params[1] = convertUtf8ToHex(params[1], true);
+  }
+  return params;
 }
 
 export function parseTransactionData(
