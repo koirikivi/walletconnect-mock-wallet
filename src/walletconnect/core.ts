@@ -51,6 +51,7 @@ class Connector {
   private version: number;
 
   private _bridge: string;
+  private _prevKey: ArrayBuffer | null;
   private _key: ArrayBuffer | null;
   private _nextKey: ArrayBuffer | null;
   private _keyPair: IKeyPair | null;
@@ -82,6 +83,7 @@ class Connector {
     this.version = 1;
 
     this._bridge = "";
+    this._prevKey = null;
     this._key = null;
     this._nextKey = null;
     this._keyPair = null;
@@ -1013,7 +1015,7 @@ class Connector {
 
     const message = convertUtf8ToArrayBuffer(messageString);
 
-    const encryptedMessage = this.cryptoLib.encryptWithPublicKey(
+    const encryptedMessage = await this.cryptoLib.encryptWithPublicKey(
       publicKey,
       message
     );
@@ -1031,9 +1033,10 @@ class Connector {
   private async _initKeyExchange() {
     const publicKey = await this._requestSigningChallenge();
 
-    const result = this._requestKeyUpdate(publicKey);
+    const result = await this._requestKeyUpdate(publicKey);
 
     if (result) {
+      this._prevKey = this._key;
       this._key = this._nextKey;
       this._nextKey = null;
     }
@@ -1060,15 +1063,14 @@ class Connector {
 
   private async _handleKeyUpdate(payload: IJsonRpcRequest) {
     if (!this._keyPair) {
-      this._eventManager.trigger({
-        event: "error",
-        params: [
-          {
-            code: "KEY_UPDATE_ERROR",
-            message: "Error: keyPair is missing for on key_update"
-          }
-        ]
+      const response = this._formatResponse({
+        id: payload.id,
+        error: {
+          message: "Failed to execute key update"
+        }
       });
+
+      this._sendResponse(response);
     } else {
       const encryptedMessage = payload.params[0];
 
@@ -1083,15 +1085,16 @@ class Connector {
         const { nextKey } = JSON.parse(messageString);
 
         if (nextKey) {
-          this.key = nextKey;
-          this._nextKey = null;
-
           const response = this._formatResponse({
             id: payload.id,
             result: true
           });
 
-          this._sendResponse(response);
+          await this._sendResponse(response);
+
+          this._prevKey = this._key;
+          this.key = nextKey;
+          this._nextKey = null;
         } else {
           const response = this._formatResponse({
             id: payload.id,
@@ -1183,11 +1186,15 @@ class Connector {
   > {
     const key: ArrayBuffer | null = this._key;
     if (this.cryptoLib && key) {
-      const result:
+      let result:
         | IJsonRpcRequest
         | IJsonRpcResponseSuccess
         | IJsonRpcResponseError
         | null = await this.cryptoLib.decrypt(payload, key);
+      const prevKey: ArrayBuffer | null = this._prevKey;
+      if (!result && prevKey) {
+        result = await this.cryptoLib.decrypt(payload, prevKey);
+      }
       return result;
     }
     return null;
